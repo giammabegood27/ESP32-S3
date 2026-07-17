@@ -1,0 +1,952 @@
+<!DOCTYPE HTML>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signoretti Irrigazione — Centralina BLE</title>
+
+  <!-- Sostituito con la CDN stabile di Tailwind v3 per evitare blocchi runtime del browser -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link class="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-void: #0B1710;
+      --bg-panel: #122019;
+      --bg-raised: #17281F;
+      --silk: #ECE7DA;
+      --muted: #7C9186;
+      --copper: #C98A3B;
+      --copper-dim: #8C6428;
+      --trace: #26392E;
+      --led-open: #34D399;
+      --led-closed: #B33A2E;
+      --danger: #D9534F;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-void);
+      color: var(--silk);
+      background-image: radial-gradient(circle, #16281f 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .font-display { font-family: 'Space Grotesk', sans-serif; }
+    .font-mono { font-family: 'IBM Plex Mono', monospace; }
+
+    ::selection { background: var(--copper); color: #1a1108; }
+
+    :focus-visible {
+      outline: 2px solid var(--copper);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+
+    /* --- Pannello / scheda (motivo PCB) --- */
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--trace);
+      border-radius: 1rem;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 10px 30px rgba(0,0,0,0.35);
+    }
+    .panel-eyebrow {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--copper);
+      border-bottom: 1px dashed var(--trace);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .panel-eyebrow i { color: var(--muted); }
+
+    /* --- Input numerici/testo --- */
+    .field-input {
+      background: var(--bg-void);
+      border: 1px solid var(--trace);
+      color: var(--silk);
+      font-family: 'IBM Plex Mono', monospace;
+      border-radius: 0.6rem;
+    }
+    .field-input:focus { border-color: var(--copper-dim); }
+
+    /* --- Valvole (pulsanti zona) --- */
+    .valve-btn {
+      position: relative;
+      border-radius: 0.9rem;
+      padding: 1.1rem 0.75rem;
+      font-weight: 700;
+      display: flex; flex-direction: column; align-items: center; gap: 0.6rem;
+      color: var(--silk);
+      background: linear-gradient(180deg, #6b2e21, #4c2117);
+      border: 1px solid #3a1a12;
+      box-shadow: 0 6px 0 #33150e, 0 10px 16px rgba(0,0,0,0.45);
+      transition: box-shadow 0.05s ease, transform 0.05s ease, background 0.15s ease;
+      cursor: pointer;
+    }
+    .valve-btn:active, .valve-btn.is-open {
+      box-shadow: 0 2px 0 #0c5c41, 0 4px 10px rgba(0,0,0,0.35);
+      transform: translateY(4px);
+    }
+    .valve-btn.is-open {
+      background: linear-gradient(180deg, #1c9068, #146a4d);
+      border-color: #0c5c41;
+    }
+    .valve-btn:disabled, .action-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+    .valve-label { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .valve-btn.is-open .valve-label { color: #d3f7e6; }
+
+    /* --- LED rail (elemento signature) --- */
+    .led-dot {
+      width: 20px; height: 20px; border-radius: 9999px;
+      background: #4a2318;
+      box-shadow: inset 0 0 2px rgba(0,0,0,0.6);
+      transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+    .led-dot.is-open {
+      background: var(--led-open);
+      box-shadow: 0 0 8px 2px rgba(52, 211, 153, 0.932), inset 0 0 2px rgba(0,0,0,0.3);
+    }
+
+    /* --- Bottoni azione --- */
+    .btn-copper {
+      background: linear-gradient(180deg, #d69a4d, var(--copper));
+      color: #211405;
+      font-weight: 700;
+      border-radius: 0.8rem;
+      box-shadow: 0 4px 0 #8c6428, 0 8px 14px rgba(0,0,0,0.35);
+      transition: box-shadow 0.05s ease, transform 0.05s ease;
+    }
+    .btn-copper:active { box-shadow: 0 1px 0 #8c6428; transform: translateY(3px); }
+    .btn-emerald {
+      background: linear-gradient(180deg, #1fae7d, #158a63);
+      color: #eafff5;
+      font-weight: 700;
+      border-radius: 0.8rem;
+      box-shadow: 0 4px 0 #0c5c41, 0 8px 14px rgba(0,0,0,0.35);
+      transition: box-shadow 0.05s ease, transform 0.05s ease;
+    }
+    .btn-emerald:active { box-shadow: 0 1px 0 #0c5c41; transform: translateY(3px); }
+    .btn-danger {
+      background: linear-gradient(180deg, #e2635e, var(--danger));
+      color: #2a0e0c;
+      font-weight: 700;
+      border-radius: 0.8rem;
+      box-shadow: 0 4px 0 #8f3330, 0 8px 14px rgba(0,0,0,0.35);
+      transition: box-shadow 0.05s ease, transform 0.05s ease;
+    }
+    .btn-danger:active { box-shadow: 0 1px 0 #8f3330; transform: translateY(3px); }
+    .btn-ghost {
+      background: var(--bg-raised);
+      border: 1px solid var(--trace);
+      color: var(--silk);
+      font-weight: 700;
+      border-radius: 0.8rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 1em; height: 1em;
+      border: 2px solid rgba(236,231,218,0.35);
+      border-top-color: var(--silk);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation: none; border-top-color: rgba(236,231,218,0.35); }
+    }
+
+    #irrigazione-progress, #irrigazione-zone-progress {
+      transition: width 200ms linear;
+    }
+
+    #toast-container {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      width: min(90vw, 420px);
+    }
+    .toast {
+      padding: 0.75rem 1rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+      animation: toast-in 0.2s ease-out;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: 1px solid var(--trace);
+    }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .toast-success { background: #123d2c; color: #d3f7e6; border-color: #1c5c41; }
+    .toast-error { background: #3d1512; color: #ffd9d6; border-color: #6b2119; }
+    .toast-info { background: var(--bg-raised); color: var(--silk); }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- Popup progresso ciclo automatico / test -->
+  <div id="irrigazione-popup" class="hidden fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/8 backdrop-blur-[px] ">
+    <div class="panel p-6 w-full max-w-sm">
+      <div class="flex flex-col items-center gap-4">
+        <div class="flex items-center justify-between w-full gap-3">
+          <div class="flex items-center justify-center gap-3">
+            <div class="spinner" style="width:1.15em;height:1.15em;border-width:3px;"></div>
+            <div class="font-display text-lg font-bold">IRRIGAZIONE IN CORSO</div>
+          </div>
+          <button type="button" class="btn-ghost py-2 px-3 text-sm" onclick="hideIrrigazionePopup()" aria-label="Nascondi popup irrigazione">
+            <i class="fa-solid fa-eye-slash"></i> Nascondi
+          </button>
+        </div>
+        <div id="irrigazione-cycle" class="panel-eyebrow border-none pb-0 mb-0 justify-center">Ciclo attivo: --</div>
+
+        <div class="w-full">
+          <div class="flex items-center justify-between text-sm mb-1" style="color:var(--muted)">
+            <span>Ciclo completo</span>
+            <span id="irrigazione-time-mini" class="font-mono">--:-- / --:--</span>
+          </div>
+          <div class="w-full rounded-lg overflow-hidden" style="height:12px; background:var(--bg-void); border:1px solid var(--trace)">
+            <div id="irrigazione-progress" class="h-full" style="width:0%; background:var(--copper)"></div>
+          </div>
+          <div class="mt-1 text-xs font-mono flex justify-end" style="color:var(--muted)"><span id="irrigazione-percent">0%</span></div>
+        </div>
+
+        <div class="w-full text-left">
+          <div class="flex items-center justify-between text-sm mb-1" style="color:var(--muted)">
+            <div>Zona <span id="irrigazione-current-zone" class="font-mono text-[var(--silk)]">--</span></div>
+            <div id="irrigazione-zone-time-mini" class="font-mono">--:-- / --:--</div>
+          </div>
+          <div class="w-full rounded-lg overflow-hidden" style="height:10px; background:var(--bg-void); border:1px solid var(--trace)">
+            <div id="irrigazione-zone-progress" class="h-full" style="width:0%; background:var(--led-open)"></div>
+          </div>
+          <div class="mt-1 text-xs font-mono flex justify-end" style="color:var(--muted)"><span id="irrigazione-zone-percent">0%</span></div>
+        </div>
+
+        <button id="irrigazione-cancel" class="btn-danger py-2 px-4" onclick="forzaSpegniGraficaEHardware()">
+          <i class="fa-solid fa-circle-stop mr-1"></i> Annulla
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-3xl mx-auto">
+
+    <!-- Testata / "faceplate" -->
+    <header class="panel p-5 md:p-6 mb-6">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p class="font-mono text-[11px] tracking-[0.2em] uppercase" style="color:var(--copper)">SEQ-CTL / BLE-01</p>
+          <h1 class="font-display mt-1 text-2xl md:text-2xl font-bold tracking-tight flex items-center gap-4">
+            <i class="fa-solid fa-seedling" style="color:var(--led-open)"></i> <span style="letter-spacing: 0.10em;">SIGNORETTI</span>
+          </h1>
+        </div>
+        <div class="text-right">
+          <p class="font-mono text-[11px] tracking-[0.15em] uppercase" style="color:var(--muted)">Orologio RTC</p>
+          <p id="rtc-time" class="font-mono text-2xl font-semibold">--:--</p>
+          <p id="current-day" class="font-mono text-[11px] uppercase tracking-[0.15em] mt-1" style="color:var(--muted)">--</p>
+        </div>
+      </div>
+
+      <div class="mt-5 pt-4 flex items-center justify-between gap-3 flex-wrap" style="border-top:1px dashed var(--trace)">
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="font-mono text-[15px] uppercase tracking-[0.15em]" style="color:var(--muted)">Valvole</span>
+          <div id="led-rail" class="flex gap-3">
+            <div class="led-dot" id="led-z1" title="Zona 1"></div>
+            <div class="led-dot" id="led-z2" title="Zona 2"></div>
+            <div class="led-dot" id="led-z3" title="Zona 3"></div>
+            <div class="led-dot" id="led-z4" title="Zona 4"></div>
+            <div class="led-dot" id="led-z5" title="Zona 5"></div>
+            <div class="led-dot" id="led-z6" title="Zona 6"></div>
+          </div>
+          <p id="next-start-display" class=" font-mono text-[13px] uppercase tracking-[0.15em]" style="color:var(--led-open)">Prossimo: <span id="next-start" class="text-[var(--silk)]">--</span></p>
+        </div>
+      </div>
+
+      <div class="mt-5 flex flex-col items-center gap-2">
+        <button id="btn-connect" class="btn-copper py-2.5 px-6 inline-flex items-center gap-2" onclick="connettiBLE()">
+          <i class="fa-solid fa-bluetooth"></i> CONNETTI VIA BLUETOOTH
+        </button>
+        <button id="btn-open-popup" type="button" class="btn-ghost py-2 px-4 inline-flex items-center gap-2 hidden" onclick="showIrrigazionePopup()">
+          <i class="fa-solid fa-eye"></i> Mostra popup
+        </button>
+        <p id="connection-hint" class="text-xs min-h-[1rem]" style="color:var(--muted)"></p>
+      </div>
+    </header>
+
+    <section class="panel p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+      <h2 class="panel-eyebrow"><i class="fa-solid fa-bolt"></i> VLV-DRV · comandi manuali</h2>
+        <button type="button" id="btn-toggle-manual" class="btn-ghost py-2 px-3 text-sm" onclick="toggleManualCommands()" aria-expanded="false">
+          <i class="fa-solid fa-chevron-down"></i> Mostra
+        </button>
+      </div>
+
+      <div id="manual-commands-body" class="hidden">
+      <button id="btn-test" class="action-btn btn-emerald w-full py-3 px-4 mb-3 flex justify-center items-center gap-2" onclick="inviaComandoBLE('TEST', 'Ciclo di test avviato')" disabled>
+        <i class="fa-solid fa-vial"></i> AVVIA CICLO DI TEST SEQUENZIALE (10s a zona)
+      </button>
+
+      <button id="btn-reset-guard" class="action-btn btn-ghost w-full py-2 px-4 mb-6 flex justify-center items-center gap-2 text-sm" onclick="inviaComandoBLE('RESETGUARD', 'Blocco giornaliero azzerato: gli start possono ripartire oggi')" disabled title="Permette a Start 1/Start 2 di ripartire più volte nello stesso giorno, utile in fase di test">
+        <i class="fa-solid fa-arrow-rotate-left"></i> RESET BLOCCO GIORNALIERO START
+      </button>
+
+      <h3 class="text-center font-mono text-[11px] uppercase tracking-[0.15em] mb-4" style="color:var(--muted)">Attivazione manuale valvole</h3>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        <button id="btn-z1" class="valve-btn action-btn" onclick="clickPushBtn(1)" disabled>
+          <i class="fa-solid fa-faucet-drip text-xl"></i> Zona 1 <span class="valve-label">chiusa</span>
+        </button>
+        <button id="btn-z2" class="valve-btn action-btn" onclick="clickPushBtn(2)" disabled>
+          <i class="fa-solid fa-faucet-drip text-xl"></i> Zona 2 <span class="valve-label">chiusa</span>
+        </button>
+        <button id="btn-z3" class="valve-btn action-btn" onclick="clickPushBtn(3)" disabled>
+          <i class="fa-solid fa-faucet-drip text-xl"></i> Zona 3 <span class="valve-label">chiusa</span>
+        </button>
+        <button id="btn-z4" class="valve-btn action-btn" onclick="clickPushBtn(4)" disabled>
+          <i class="fa-solid fa-faucet-drip text-xl"></i> Zona 4 <span class="valve-label">chiusa</span>
+        </button>
+        <button id="btn-z5" class="valve-btn action-btn" onclick="clickPushBtn(5)" disabled>
+          <i class="fa-solid fa-faucet-drip text-xl"></i> Zona 5 <span class="valve-label">chiusa</span>
+        </button>
+        <button id="btn-z6" class="valve-btn action-btn" onclick="clickPushBtn(6)" disabled>
+          <i class="fa-solid fa-faucet-drip text-xl"></i> Zona 6 <span class="valve-label">chiusa</span>
+        </button>
+      </div>
+
+      <button id="btn-stop" class="action-btn btn-danger w-full py-3 px-4 flex justify-center items-center gap-2" onclick="forzaSpegniGraficaEHardware()" disabled>
+        <i class="fa-solid fa-circle-stop"></i> SPEGNI TUTTO / EMERGENZA
+      </button>
+    </section>
+
+    <section class="panel p-6">
+      <h2 class="panel-eyebrow"><i class="fa-solid fa-calendar-days"></i> SEQ-CTL · pianificazione</h2>
+
+      <div class="flex flex-col gap-4 rounded-xl p-4 mb-6" style="background:var(--bg-void); border:1px solid var(--trace)">
+        <div class="flex items-center justify-between sm:justify-start gap-4">
+          <label class="font-semibold w-44 flex items-center gap-2">
+            <input type="checkbox" id="start1_attivo" class="h-5 w-5 rounded accent-[#C98A3B]"> Partenza 1:
+          </label>
+          <div class="flex items-center gap-2">
+            <input type="number" id="ora" min="0" max="23" class="field-input w-16 p-2 text-center text-lg font-bold">
+            <span class="font-bold text-xl">:</span>
+            <input type="number" id="min" min="0" max="59" class="field-input w-16 p-2 text-center text-lg font-bold">
+          </div>
+        </div>
+        <div class="border-t my-1" style="border-color:var(--trace)"></div>
+        <div class="flex items-center justify-between sm:justify-start gap-4">
+          <label class="font-semibold w-44 flex items-center gap-2">
+            <input type="checkbox" id="start2_attivo" class="h-5 w-5 rounded accent-[#C98A3B]"> Partenza 2:
+          </label>
+          <div class="flex items-center gap-2">
+            <input type="number" id="ora2" min="0" max="23" class="field-input w-16 p-2 text-center text-lg font-bold">
+            <span class="font-bold text-xl">:</span>
+            <input type="number" id="min2" min="0" max="59" class="field-input w-16 p-2 text-center text-lg font-bold">
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-6">
+        <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] mb-3" style="color:var(--muted)"><i class="fa-solid fa-hourglass-start mr-1" style="color:var(--led-open)"></i> Durate zone — Start 1</h3>
+        <div id="durate-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+      </div>
+
+      <div class="mb-6">
+        <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] mb-3" style="color:var(--muted)"><i class="fa-solid fa-calendar-day mr-1" style="color:var(--led-open)"></i> Giorni di attivazione — Start 1</h3>
+        <div id="giorni-container" class="flex justify-between rounded-xl p-4 overflow-x-auto gap-2" style="background:var(--bg-void); border:1px solid var(--trace)"></div>
+      </div>
+
+      <div class="mb-6 pt-4" style="border-top:1px dashed var(--trace)">
+        <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] mb-3" style="color:var(--muted)"><i class="fa-solid fa-hourglass-end mr-1" style="color:var(--copper)"></i> Durate zone — Start 2</h3>
+        <div id="durate2-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+      </div>
+
+      <div class="mb-6">
+        <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] mb-3" style="color:var(--muted)"><i class="fa-solid fa-calendar-day mr-1" style="color:var(--copper)"></i> Giorni di attivazione — Start 2</h3>
+        <div id="giorni2-container" class="flex justify-between rounded-xl p-4 overflow-x-auto gap-2" style="background:var(--bg-void); border:1px solid var(--trace)"></div>
+      </div>
+
+      <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="rounded-xl p-4" style="background:var(--bg-void); border:1px solid var(--trace)">
+          <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] mb-2" style="color:var(--led-open)">Totale ciclo 1</h3>
+          <div class="font-mono text-3xl font-semibold" id="ciclo1-total">--:--</div>
+          <div class="text-xs mt-1" style="color:var(--muted)">Somma delle durate zone Start 1</div>
+        </div>
+        <div class="rounded-xl p-4" style="background:var(--bg-void); border:1px solid var(--trace)">
+          <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] mb-2" style="color:var(--copper)">Totale ciclo 2</h3>
+          <div class="font-mono text-3xl font-semibold" id="ciclo2-total">--:--</div>
+          <div class="text-xs mt-1" style="color:var(--muted)">Somma delle durate zone Start 2</div>
+        </div>
+      </div>
+
+      <button type="button" id="btn-save" class="action-btn btn-copper w-full py-3 px-4 flex justify-center items-center gap-2 text-lg" onclick="salvaConfigurazione()" disabled>
+        <i class="fa-solid fa-floppy-disk"></i> SALVA CONFIGURAZIONE
+      </button>
+    </section>
+
+    <p class="text-center font-mono text-[10px] uppercase tracking-[0.2em] mt-6" style="color:var(--trace)">Arduino UNO R4 · ArduinoBLE · EEPROM v.ABD3</p>
+  </div>
+
+  <script>
+    const UUID_SERVIZIO = "19b10000-e8f2-537e-4f6c-d104768a1214";
+    const UUID_RX = "19b10001-e8f2-537e-4f6c-d104768a1214";
+    const UUID_TX = "19b10002-e8f2-537e-4f6c-d104768a1214";
+
+    const nomeGiorni = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+    const nomeGiorniEsteso = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+    const nomeGiorniUpper = ["DOMENICA", "LUNEDI", "MARTEDI", "MERCOLEDI", "GIOVEDI", "VENERDI", "SABATO"];
+    const ETICHETTE_CICLO = { 1: "Ciclo Start 1", 2: "Ciclo Start 2", 3: "Ciclo di Test" };
+
+    let gattServer = null;
+    let txCharacteristic = null;
+    let rxCharacteristic = null;
+    let zonaManualeAttivaLocale = 0;
+
+    const ACTION_BUTTON_IDS = ['btn-test', 'btn-reset-guard', 'btn-z1', 'btn-z2', 'btn-z3', 'btn-z4', 'btn-z5', 'btn-z6', 'btn-stop', 'btn-save'];
+
+    window.onload = function() {
+      const durateDiv = document.getElementById('durate-container');
+      for (let i = 1; i <= 6; i++) {
+        durateDiv.innerHTML += `
+          <div class="flex items-center justify-between rounded-xl p-3" style="background:var(--bg-void); border:1px solid var(--trace)">
+            <span class="font-medium">Zona ${i}</span><i class="fa-solid fa-droplet text-xl ml-4" style="color:var(--led-open); opacity:.4"></i>
+            <div class="flex items-center gap-2">
+              <input type="number" id="d${i}" min="0" max="1800" class="field-input w-16 p-1.5 text-center">
+              <span class="text-xs" style="color:var(--muted)">sec</span>
+            </div>
+          </div>`;
+      }
+
+      const durate2Div = document.getElementById('durate2-container');
+      for (let i = 1; i <= 6; i++) {
+        durate2Div.innerHTML += `
+          <div class="flex items-center justify-between rounded-xl p-3" style="background:var(--bg-void); border:1px solid var(--trace)">
+            <span class="font-medium">Zona ${i}</span><i class="fa-solid fa-droplet text-xl ml-4" style="color:var(--copper); opacity:.5"></i>
+            <div class="flex items-center gap-2">
+              <input type="number" id="d2_${i}" min="0" max="1800" class="field-input w-16 p-1.5 text-center">
+              <span class="text-xs" style="color:var(--muted)">sec</span>
+            </div>
+          </div>`;
+      }
+
+      document.querySelectorAll('#durate-container input, #durate2-container input').forEach(input => {
+        input.addEventListener('input', aggiornaTotaliCicli);
+      });
+      aggiornaTotaliCicli();
+
+      const giorniDiv = document.getElementById('giorni-container');
+      nomeGiorni.forEach((giorno, index) => {
+        giorniDiv.innerHTML += `
+          <label class="flex flex-col items-center gap-1 cursor-pointer min-w-[40px]">
+            <input type="checkbox" id="g${index}" class="h-4 w-4 rounded accent-[#34D399]">
+            <span class="text-xs font-semibold" style="color:var(--muted)">${giorno}</span>
+          </label>`;
+      });
+
+      const giorni2Div = document.getElementById('giorni2-container');
+      nomeGiorni.forEach((giorno, index) => {
+        giorni2Div.innerHTML += `
+          <label class="flex flex-col items-center gap-1 cursor-pointer min-w-[40px]">
+            <input type="checkbox" id="g2_${index}" class="h-4 w-4 rounded accent-[#C98A3B]">
+            <span class="text-xs font-semibold" style="color:var(--muted)">${giorno}</span>
+          </label>`;
+      });
+
+      document.querySelectorAll('input[type="number"]').forEach(input => {
+        const clampValue = () => {
+          const min = input.min !== '' ? parseInt(input.min) : -Infinity;
+          const max = input.max !== '' ? parseInt(input.max) : Infinity;
+          let val = parseInt(input.value);
+          if (isNaN(val)) val = min !== -Infinity ? min : 0;
+          input.value = Math.min(max, Math.max(min, val));
+        };
+
+        input.addEventListener('input', () => {
+          clampValue();
+          aggiornaProssimoStart();
+        });
+        input.addEventListener('change', () => {
+          clampValue();
+          aggiornaProssimoStart();
+        });
+      });
+
+      document.querySelectorAll('#start1_attivo, #start2_attivo, #giorni-container input, #giorni2-container input').forEach(input => {
+        input.addEventListener('change', aggiornaProssimoStart);
+      });
+
+      aggiornaGiornoCorrente();
+      aggiornaProssimoStart();
+
+      if (!navigator.bluetooth) {
+        document.getElementById('connection-hint').innerText = "Questo browser non supporta il Web Bluetooth. Usa Chrome o Edge su desktop/Android.";
+        document.getElementById('btn-connect').disabled = true;
+        document.getElementById('btn-connect').classList.add('opacity-50', 'cursor-not-allowed');
+      }
+    };
+
+    function aggiornaGiornoCorrente() {
+      aggiornaCurrentDayDisplay();
+    }
+
+    function aggiornaCurrentDayDisplay() {
+      const display = document.getElementById('current-day');
+      if (!display) return;
+
+      const now = new Date();
+      const dayName = nomeGiorniUpper[now.getDay()];
+      display.innerText = dayName;
+    }
+
+    function formatDateTime(date) {
+      const dayName = nomeGiorniEsteso[date.getDay()];
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      return `${dayName} ${day}/${month} ${hours}:${minutes}`;
+    }
+
+    function formatoProssimoStart(startId, date) {
+      return `Start ${startId} — ${formatDateTime(date)}`;
+    }
+
+    function leggiGiorniAttivi(prefisso) {
+      const giorni = [];
+      for (let i = 0; i < 7; i++) {
+        const el = document.getElementById(`${prefisso}${i}`);
+        giorni.push(el ? el.checked : false);
+      }
+      return giorni;
+    }
+
+    function calcolaProssimoStartDaConfig(startId, ora, min, giorniAttivi) {
+      if (!ora && ora !== 0) return null;
+      if (!min && min !== 0) return null;
+      const now = new Date();
+      const candidates = [];
+
+      for (let offset = 0; offset < 7; offset++) {
+        const candidate = new Date(now);
+        candidate.setDate(now.getDate() + offset);
+        candidate.setHours(ora, min, 0, 0);
+        const candidateDay = candidate.getDay();
+        if (!giorniAttivi[candidateDay]) continue;
+        if (candidate.getTime() <= now.getTime()) {
+          if (offset === 0) continue;
+        }
+        candidates.push(candidate);
+      }
+
+      if (candidates.length === 0) return null;
+      return candidates.reduce((a, b) => (a.getTime() < b.getTime() ? a : b));
+    }
+
+    function aggiornaProssimoStart() {
+      const ora1 = Math.max(0, Math.min(23, parseInt(document.getElementById('ora').value) || 0));
+      const min1 = Math.max(0, Math.min(59, parseInt(document.getElementById('min').value) || 0));
+      const en1 = document.getElementById('start1_attivo').checked;
+      const giorni1 = leggiGiorniAttivi('g');
+
+      const ora2 = Math.max(0, Math.min(23, parseInt(document.getElementById('ora2').value) || 0));
+      const min2 = Math.max(0, Math.min(59, parseInt(document.getElementById('min2').value) || 0));
+      const en2 = document.getElementById('start2_attivo').checked;
+      const giorni2 = leggiGiorniAttivi('g2_');
+
+      const nextStarts = [];
+      if (en1) {
+        const next1 = calcolaProssimoStartDaConfig(1, ora1, min1, giorni1);
+        if (next1) nextStarts.push({ startId: 1, date: next1 });
+      }
+      if (en2) {
+        const next2 = calcolaProssimoStartDaConfig(2, ora2, min2, giorni2);
+        if (next2) nextStarts.push({ startId: 2, date: next2 });
+      }
+
+      const display = document.getElementById('next-start');
+      if (!display) return;
+
+      if (nextStarts.length === 0) {
+        if ((en1 && giorni1.every(active => !active)) || (en2 && giorni2.every(active => !active))) {
+          display.innerText = 'Seleziona giorni attivi';
+        } else if (en1 || en2) {
+          display.innerText = 'Orario non valido';
+        } else {
+          display.innerText = '--';
+        }
+        return;
+      }
+
+      const next = nextStarts.reduce((a, b) => (a.date.getTime() <= b.date.getTime() ? a : b));
+      display.innerText = formatoProssimoStart(next.startId, next.date);
+    }
+
+    function formatTime(secs) {
+      secs = Math.max(0, Math.floor(secs || 0));
+      const m = Math.floor(secs / 60).toString().padStart(2, '0');
+      const s = Math.floor(secs % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function leggiTotaleCiclo(ciclo) {
+      let totale = 0;
+      for (let i = 1; i <= 6; i++) {
+        const campo = document.getElementById(ciclo === 2 ? `d2_${i}` : `d${i}`);
+        if (campo) {
+          totale += Math.max(0, parseInt(campo.value, 10) || 0);
+        }
+      }
+      return totale;
+    }
+
+    function aggiornaTotaliCicli() {
+      const totale1 = leggiTotaleCiclo(1);
+      const totale2 = leggiTotaleCiclo(2);
+      const el1 = document.getElementById('ciclo1-total');
+      const el2 = document.getElementById('ciclo2-total');
+      if (el1) el1.innerText = formatTime(totale1);
+      if (el2) el2.innerText = formatTime(totale2);
+    }
+
+    function mostraToast(messaggio, tipo = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const icone = { success: 'fa-circle-check', error: 'fa-triangle-exclamation', info: 'fa-circle-info' };
+      toast.className = `toast toast-${tipo}`;
+      toast.innerHTML = `<i class="fa-solid ${icone[tipo] || icone.info}"></i><span>${messaggio}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s ease';
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    let statoCiclo = { tipo: 0, elapsedZona: 0, durZona: 0, elapsedCiclo: 0, totCiclo: 0, zona: 0, ricevutoAt: 0 };
+    let _renderInterval = null;
+    let popupHiddenByUser = false;
+
+    function showIrrigazionePopup() {
+      popupHiddenByUser = false;
+      document.getElementById('irrigazione-popup').classList.remove('hidden');
+    }
+
+    function hideIrrigazionePopup() {
+      popupHiddenByUser = true;
+      document.getElementById('irrigazione-popup').classList.add('hidden');
+    }
+
+    function setPopupReopenVisible(visible) {
+      const button = document.getElementById('btn-open-popup');
+      if (!button) return;
+      button.classList.toggle('hidden', !visible);
+    }
+
+    // Calcola il totale del ciclo a partire dagli array di durate già ricevuti,
+    // invece di farlo mandare dal firmware (tiene il pacchetto BLE più corto).
+    function calcolaTotaleCicloDaDati(dati, tipo) {
+      if (tipo === 3) {
+        if (!Array.isArray(dati.d)) return 0;
+        return dati.d.reduce((acc, v) => acc + ((parseInt(v, 10) || 0) > 0 ? 10 : 0), 0);
+      }
+      const arr = tipo === 2 ? dati.d2 : dati.d;
+      if (!Array.isArray(arr)) return 0;
+      return arr.reduce((acc, v) => acc + (parseInt(v, 10) || 0), 0);
+    }
+
+    function aggiornaStatoCiclo(dati) {
+      const tipo = parseInt(dati.ct, 10) || 0;
+
+      statoCiclo = {
+        tipo: tipo,
+        elapsedZona: parseInt(dati.ez, 10) || 0,
+        durZona: parseInt(dati.dz, 10) || 0,
+        elapsedCiclo: parseInt(dati.ec, 10) || 0,
+        totCiclo: calcolaTotaleCicloDaDati(dati, tipo),
+        zona: parseInt(dati.z, 10) || 0,
+        ricevutoAt: Date.now()
+      };
+
+      if (tipo > 0) {
+        // Un ciclo reale (automatico o test) è ora al comando: qualunque zona manuale
+        // tracciata solo lato client non è più attendibile, il firmware l'ha già chiusa.
+        zonaManualeAttivaLocale = 0;
+        document.getElementById('irrigazione-cycle').innerText = ETICHETTE_CICLO[tipo] || 'Ciclo attivo';
+        if (!popupHiddenByUser) {
+          showIrrigazionePopup();
+        }
+        setPopupReopenVisible(true);
+        if (!_renderInterval) _renderInterval = setInterval(renderProgressoCiclo, 200);
+        renderProgressoCiclo();
+      } else {
+        fermaProgressoCiclo();
+      }
+    }
+
+    function fermaProgressoCiclo() {
+      if (_renderInterval) { clearInterval(_renderInterval); _renderInterval = null; }
+      statoCiclo.tipo = 0;
+      hideIrrigazionePopup();
+      setPopupReopenVisible(false);
+    }
+
+    function renderProgressoCiclo() {
+      if (statoCiclo.tipo === 0) return;
+      const scorso = (Date.now() - statoCiclo.ricevutoAt) / 1000;
+
+      const elapsedCiclo = statoCiclo.totCiclo > 0 ? Math.min(statoCiclo.totCiclo, statoCiclo.elapsedCiclo + scorso) : 0;
+      const pctCiclo = statoCiclo.totCiclo > 0 ? Math.min(1, elapsedCiclo / statoCiclo.totCiclo) : 0;
+      document.getElementById('irrigazione-progress').style.width = `${Math.round(pctCiclo * 100)}%`;
+      document.getElementById('irrigazione-percent').innerText = `${Math.round(pctCiclo * 100)}%`;
+      document.getElementById('irrigazione-time-mini').innerText = `${formatTime(elapsedCiclo)} / ${formatTime(statoCiclo.totCiclo)}`;
+
+      const elapsedZona = statoCiclo.durZona > 0 ? Math.min(statoCiclo.durZona, statoCiclo.elapsedZona + scorso) : 0;
+      const pctZona = statoCiclo.durZona > 0 ? Math.min(1, elapsedZona / statoCiclo.durZona) : 0;
+      document.getElementById('irrigazione-zone-progress').style.width = `${Math.round(pctZona * 100)}%`;
+      document.getElementById('irrigazione-zone-percent').innerText = `${Math.round(pctZona * 100)}%`;
+      document.getElementById('irrigazione-zone-time-mini').innerText = `${formatTime(elapsedZona)} / ${formatTime(statoCiclo.durZona)}`;
+      document.getElementById('irrigazione-current-zone').innerText = statoCiclo.zona > 0 ? statoCiclo.zona : '--';
+    }
+
+    function impostaAbilitazioneComandi(abilitato) {
+      ACTION_BUTTON_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = !abilitato;
+      });
+    }
+
+    function toggleManualCommands() {
+      const body = document.getElementById('manual-commands-body');
+      const button = document.getElementById('btn-toggle-manual');
+      const isHidden = body.classList.toggle('hidden');
+
+      button.setAttribute('aria-expanded', (!isHidden).toString());
+      button.innerHTML = `<i class="fa-solid fa-chevron-${isHidden ? 'down' : 'up'}"></i> ${isHidden ? 'Mostra' : 'Nascondi'}`;
+    }
+
+    async function connettiBLE() {
+      if (!navigator.bluetooth) {
+        mostraToast("Web Bluetooth non supportato da questo browser.", "error");
+        return;
+      }
+      if (gattServer && gattServer.connected) {
+        await gattServer.disconnect();
+      }
+      gattServer = null; txCharacteristic = null; rxCharacteristic = null;
+
+      const btn = document.getElementById('btn-connect');
+      const hint = document.getElementById('connection-hint');
+      btn.disabled = true;
+      btn.className = "btn-ghost py-2.5 px-6 inline-flex items-center gap-2 cursor-wait";
+      btn.innerHTML = "<span class='spinner'></span> RICERCA DISPOSITIVO...";
+      hint.innerText = "";
+
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'SIGNORETTI_Garden_esp' }],
+          optionalServices: [UUID_SERVIZIO]
+        });
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+        btn.innerHTML = "<span class='spinner'></span> CONNETTENDO...";
+
+        gattServer = await device.gatt.connect();
+        const service = await gattServer.getPrimaryService(UUID_SERVIZIO);
+        rxCharacteristic = await service.getCharacteristic(UUID_RX);
+        txCharacteristic = await service.getCharacteristic(UUID_TX);
+        await txCharacteristic.startNotifications();
+        txCharacteristic.addEventListener('characteristicvaluechanged', riceviNotificaStatoDati);
+
+        btn.disabled = false;
+        btn.className = "btn-emerald py-2.5 px-6 inline-flex items-center gap-2";
+        btn.innerHTML = "<i class='fa-solid fa-circle-check'></i> CONNESSO";
+        impostaAbilitazioneComandi(true);
+        mostraToast("Connesso alla centralina", "success");
+
+        setTimeout(async () => {
+          const d = new Date();
+          await inviaComandoBLE(`TIME:${d.getHours()},${d.getMinutes()},${d.getDay()}`);
+        }, 1000);
+      } catch (error) {
+        resetGraficaPulsante();
+        impostaAbilitazioneComandi(false);
+        if (error && error.name === 'NotFoundError') {
+          hint.innerText = "Nessun dispositivo selezionato.";
+        } else {
+          hint.innerText = "Connessione fallita. Verifica il Bluetooth.";
+          mostraToast("Connessione fallita", "error");
+        }
+      }
+    }
+
+    function onDisconnected() {
+      resetGraficaPulsante();
+      impostaAbilitazioneComandi(false);
+      zonaManualeAttivaLocale = 0;
+      fermaProgressoCiclo();
+      mostraToast("Centralina disconnessa", "error");
+    }
+
+    function resetGraficaPulsante() {
+      const btn = document.getElementById('btn-connect');
+      btn.disabled = false;
+      btn.className = "btn-copper py-2.5 px-6 inline-flex items-center gap-2";
+      btn.innerHTML = "<i class='fa-solid fa-bluetooth'></i> CONNETTI VIA BLUETOOTH";
+    }
+
+    function aggiornaLedRail(zonaAttiva) {
+      for (let i = 1; i <= 6; i++) {
+        const led = document.getElementById(`led-z${i}`);
+        if (led) led.classList.toggle('is-open', zonaAttiva === i);
+      }
+    }
+
+    async function inviaComandoBLE(stringaComando, msgSuccesso = null) {
+      if (!rxCharacteristic) {
+        mostraToast("Nessuna connessione attiva", "error");
+        return false;
+      }
+      try {
+        let encoder = new TextEncoder();
+        await rxCharacteristic.writeValue(encoder.encode(stringaComando));
+        if (msgSuccesso) mostraToast(msgSuccesso, "success");
+        return true;
+      } catch (e) {
+        mostraToast("Errore invio comando", "error");
+        return false;
+      }
+    }
+
+    async function clickPushBtn(numeroZona) {
+      if (zonaManualeAttivaLocale === numeroZona) {
+        if (await inviaComandoBLE("MANUAL:0")) zonaManualeAttivaLocale = 0;
+      } else {
+        if (await inviaComandoBLE(`MANUAL:${numeroZona}`)) zonaManualeAttivaLocale = numeroZona;
+      }
+    }
+
+    async function forzaSpegniGraficaEHardware() {
+      if (await inviaComandoBLE("STOP", "Comando di spegnimento inviato")) {
+        zonaManualeAttivaLocale = 0;
+        fermaProgressoCiclo();
+        aggiornaLedRail(0);
+      }
+    }
+
+    async function salvaConfigurazione() {
+      try {
+        const ora1 = Math.max(0, Math.min(23, parseInt(document.getElementById('ora').value) || 0));
+        const min1 = Math.max(0, Math.min(59, parseInt(document.getElementById('min').value) || 0));
+        const en1 = document.getElementById('start1_attivo').checked ? 1 : 0;
+        const ora2 = Math.max(0, Math.min(23, parseInt(document.getElementById('ora2').value) || 0));
+        const min2 = Math.max(0, Math.min(59, parseInt(document.getElementById('min2').value) || 0));
+        const en2 = document.getElementById('start2_attivo').checked ? 1 : 0;
+
+        let durate1 = [], durate2 = [];
+        for (let i = 1; i <= 6; i++) {
+          durate1.push(Math.max(0, Math.min(1800, parseInt(document.getElementById(`d${i}`).value) || 0)));
+          durate2.push(Math.max(0, Math.min(1800, parseInt(document.getElementById(`d2_${i}`).value) || 0)));
+        }
+
+        let g1 = [], g2 = [];
+        for (let g = 0; g < 7; g++) {
+          g1.push(document.getElementById(`g${g}`).checked ? 1 : 0);
+          g2.push(document.getElementById(`g2_${g}`).checked ? 1 : 0);
+        }
+
+        // Un unico comando atomico, nell'ordine atteso dallo sscanf del firmware:
+        // h1,m1,e1,h2,m2,e2, durate1[0..5], durate2[0..5], g1[0..6], g2[0..6]
+        const stringaComando = `SAVE:${ora1},${min1},${en1},${ora2},${min2},${en2},${durate1.join(',')},${durate2.join(',')},${g1.join(',')},${g2.join(',')}`;
+
+        if (await inviaComandoBLE(stringaComando)) {
+          mostraToast("Configurazione salvata in EEPROM!", "success");
+        } else {
+          mostraToast("Errore: centralina non connessa", "error");
+        }
+      } catch (errore) {
+        mostraToast("Errore di salvataggio, controlla i valori inseriti", "error");
+      }
+    }
+
+    function riceviNotificaStatoDati(event) {
+      let decoder = new TextDecoder('utf-8');
+      let dati;
+      try {
+        dati = JSON.parse(decoder.decode(event.target.value));
+      } catch (e) {
+        return;
+      }
+
+      try {
+        document.getElementById('rtc-time').innerText = dati.rtc || "--:--";
+        aggiornaCurrentDayDisplay();
+
+        const qualcunoInFocus = document.activeElement &&
+                               (document.activeElement.tagName === 'INPUT' || document.activeElement.type === 'checkbox');
+
+        if (!qualcunoInFocus) {
+          document.getElementById('ora').value = dati.h;
+          document.getElementById('min').value = dati.m;
+          document.getElementById('start1_attivo').checked = (dati.en1 === 1);
+          document.getElementById('ora2').value = dati.h2;
+          document.getElementById('min2').value = dati.m2;
+          document.getElementById('start2_attivo').checked = (dati.en2 === 1);
+
+          for (let i = 0; i < 6; i++) {
+            if (dati.d && dati.d[i] !== undefined) document.getElementById(`d${i+1}`).value = dati.d[i];
+            if (dati.d2 && dati.d2[i] !== undefined) document.getElementById(`d2_${i+1}`).value = dati.d2[i];
+          }
+          aggiornaTotaliCicli();
+
+          for (let g = 0; g < 7; g++) {
+            if (dati.g && dati.g[g] !== undefined) document.getElementById(`g${g}`).checked = (dati.g[g] === 1);
+            if (dati.g2 && dati.g2[g] !== undefined) document.getElementById(`g2_${g}`).checked = (dati.g2[g] === 1);
+          }
+          aggiornaProssimoStart();
+        }
+
+        if (dati.ct !== undefined) {
+          aggiornaStatoCiclo(dati);
+        }
+
+        let targetZona = (parseInt(dati.z) > 0) ? parseInt(dati.z) : zonaManualeAttivaLocale;
+        aggiornaLedRail(targetZona);
+
+        for (let i = 1; i <= 6; i++) {
+          let btn = document.getElementById(`btn-z${i}`);
+          if (btn) {
+            const aperta = (targetZona === i);
+            btn.classList.toggle('is-open', aperta);
+            const label = btn.querySelector('.valve-label');
+            if (label) label.innerText = aperta ? "aperta" : "chiusa";
+          }
+        }
+      } catch (err) {
+        // Silenzioso
+      }
+    }
+  </script>
+</body>
+</html>
