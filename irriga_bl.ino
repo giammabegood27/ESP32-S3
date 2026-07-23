@@ -1,11 +1,15 @@
 #include <NimBLEDevice.h>
-#include "RTC.h"
+#include <Wire.h>
+#include <uRTCLib.h>
 #include <EEPROM.h>
 
-// Fallback minimale per ambienti (es. copia temporanea dell'IDE) che non
-// includono il file RTC.h: viene definito solo se l'header non è stato
-// fornito dal progetto (guardato tramite il define usato in RTC.h).
-#ifndef SIGNOIRRIGA_RTC_H
+// RTC hardware: modulo DS3231 su bus I2C, con batteria tampone (CR2032) per
+// mantenere l'ora anche a scheda spenta. Richiede la libreria "uRTCLib" di
+// Naguissa (installabile da Library Manager dell'IDE Arduino).
+// Se il proprio dev-board usa pin I2C diversi da quelli di default, modificare qui.
+const int RTC_SDA_PIN = 8;
+const int RTC_SCL_PIN = 9;
+
 enum class SaveLight { SAVING_TIME_INACTIVE = 0, SAVING_TIME_ACTIVE = 1 };
 enum class Month { JANUARY = 1 };
 enum DayOfWeek { SUNDAY = 1, MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY };
@@ -29,64 +33,46 @@ public:
   SaveLight saveLight;
 };
 
+// Wrapper attorno al chip DS3231 (via uRTCLib) che espone la stessa interfaccia
+// (begin/getTime/setTime) già usata dal resto dello sketch, così la logica di
+// scheduling non deve conoscere i dettagli del chip.
 class RTCClass {
 public:
-  RTCClass() : currentTime(), lastMillis(0) {}
-
   void begin() {
-    lastMillis = millis();
+    urtc.refresh();
+    // OSF (Oscillator Stop Flag): true se il DS3231 ha perso l'alimentazione
+    // (batteria scarica/assente o primo avvio mai sincronizzato).
+    batteriaScarica = urtc.lostPower();
   }
 
   void getTime(RTCTime &t) {
-    updateTime();
-    t = currentTime;
+    urtc.refresh();
+    t.dayOfMonth = urtc.day();
+    t.month = (Month)urtc.month();
+    t.year = 2000 + urtc.year();
+    t.hour = urtc.hour();
+    t.minute = urtc.minute();
+    t.second = urtc.second();
+    t.dayOfWeek = (DayOfWeek)urtc.dayOfWeek();
+    t.saveLight = SaveLight::SAVING_TIME_INACTIVE;
   }
 
   void setTime(const RTCTime &t) {
-    currentTime = t;
-    lastMillis = millis();
+    urtc.set(t.second, t.minute, t.hour, (uint8_t)t.dayOfWeek, t.dayOfMonth, (uint8_t)t.month, (uint8_t)(t.year % 100));
+    // Una sincronizzazione manuale riuscita azzera il flag: da qui in poi
+    // segnaliamo solo un'eventuale NUOVA interruzione dell'alimentazione.
+    urtc.lostPowerClear();
+    batteriaScarica = false;
   }
+
+  bool batteriaScaricaFlag() const { return batteriaScarica; }
 
 private:
-  RTCTime currentTime;
-  unsigned long lastMillis;
-
-  void updateTime() {
-    unsigned long now = millis();
-    unsigned long deltaMs = now - lastMillis;
-    if (deltaMs < 1000) return;
-
-    unsigned long secondsToAdvance = deltaMs / 1000;
-    lastMillis += secondsToAdvance * 1000;
-
-    while (secondsToAdvance > 0) {
-      secondsToAdvance--;
-      currentTime = advanceOneSecond(currentTime);
-    }
-  }
-
-  RTCTime advanceOneSecond(const RTCTime &t) {
-    RTCTime next = t;
-    next.second += 1;
-    if (next.second >= 60) {
-      next.second = 0;
-      next.minute += 1;
-      if (next.minute >= 60) {
-        next.minute = 0;
-        next.hour += 1;
-        if (next.hour >= 24) {
-          next.hour = 0;
-          next.dayOfWeek = (DayOfWeek)(next.dayOfWeek == SATURDAY ? SUNDAY : (next.dayOfWeek + 1));
-          next.dayOfMonth = (next.dayOfMonth % 31) + 1;
-        }
-      }
-    }
-    return next;
-  }
+  uRTCLib urtc = uRTCLib(0x68);
+  bool batteriaScarica = false;
 };
 
 RTCClass RTC;
-#endif
 
 // Definizione Servizio e Caratteristiche BLE
 static const char* SERVICE_UUID = "19B10000-E8F2-537E-4F6C-D104768A1214";
@@ -212,6 +198,7 @@ void spegniZoneSeNonInCiclo() {
 // e avvio del server BLE (servizio + caratteristiche RX/TX + advertising).
 void setup() {
   Serial.begin(9600);
+  Wire.begin(RTC_SDA_PIN, RTC_SCL_PIN);
   RTC.begin();
   EEPROM.begin(64);
   
@@ -511,6 +498,7 @@ void inviaStatoBLE() {
   json += ",\"dz\":" + String(durZonaCorr);
   json += ",\"ez\":" + String(elapsedZonaCorr);
   json += ",\"ec\":" + String(elapsedCiclo);
+  json += ",\"bat\":" + String(RTC.batteriaScaricaFlag() ? "0" : "1");
   json += "}";
   
   if (pTxCharacteristic) {
