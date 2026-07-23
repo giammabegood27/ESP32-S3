@@ -145,7 +145,7 @@ void startBLEAdvertising() {
 
 // Mappatura Indirizzi EEPROM
 // Le durate ora occupano 2 byte l'una (uint16_t) invece di 1, per non troncare
-// valori superiori a 255 secondi (fino a 1500s supportati lato HMI).
+// valori superiori a 255 secondi (fino a 1800s supportati lato HMI).
 const int ADDR_FIRMA = 0;         // 2 byte (0-1)
 const int ADDR_ORA = 2;           // 1 byte
 const int ADDR_MIN = 3;           // 1 byte
@@ -402,7 +402,7 @@ void elaboraStringaComando(String comando) {
     if (argomenti >= 32) { 
       oraStart = h1; minutoStart = m1; abilitaStart1 = (e1 == 1); 
       oraStart2 = h2; minutoStart2 = m2; abilitaStart2 = (e2 == 1);
-      // Durate limitate a 0-1500 secondi, coerente con l'interfaccia web
+      // Durate limitate a 0-1800 secondi, coerente con l'interfaccia web
       for (int i = 0; i < 6; i++) {
         durataZone[i] = constrain(dur1[i], 0, 1800);
         durataZone2[i] = constrain(dur2[i], 0, 1800);
