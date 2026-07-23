@@ -111,6 +111,7 @@ class RXCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 void startBLEAdvertising();
+void spegniZoneSeNonInCiclo();
 
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
@@ -124,6 +125,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     (void)connInfo;
     (void)reason;
     Serial.println("BLE client disconnesso, riavvio advertising...");
+    spegniZoneSeNonInCiclo();
     startBLEAdvertising();
   }
 };
@@ -195,6 +197,12 @@ int prossimaZonaDaAvviare = -1;
 // Usato per calcolare il progresso complessivo del ciclo (non solo della singola zona).
 unsigned long secondiAccumulatiCiclo = 0;
 
+void spegniZoneSeNonInCiclo() {
+  if (!cicloAutomaticoAttivo && !inCicloTest) {
+    for (int i = 0; i < numeroZone; i++) digitalWrite(pinZone[i], LOW);
+  }
+}
+
 void setup() {
   Serial.begin(9600);
   RTC.begin();
@@ -236,10 +244,6 @@ void loop() {
   if (millis() - ultimoInvioStato > 2000) {
     inviaStatoBLE();
     ultimoInvioStato = millis();
-  }
-
-  if (!cicloAutomaticoAttivo && !inCicloTest) {
-    for (int i = 0; i < numeroZone; i++) digitalWrite(pinZone[i], LOW);
   }
 
   delay(10);
