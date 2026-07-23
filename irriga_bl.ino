@@ -272,6 +272,11 @@ void setup() {
   // Init NimBLE for ESP32
   Serial.println("Inizializzazione BLE (NimBLE)...");
   NimBLEDevice::init("SIGNORETTI_Garden_esp");
+  // Il comando SAVE: (config completa) supera i ~20 byte utili del MTU BLE di
+  // default (23): senza negoziare un MTU più alto la scrittura arriva troncata,
+  // lo sscanf in elaboraStringaComando() non riempie tutti i 32 campi attesi e
+  // il salvataggio viene scartato silenziosamente (i valori tornano quelli vecchi).
+  NimBLEDevice::setMTU(247);
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new ServerCallbacks());
   pService = pServer->createService(SERVICE_UUID);
@@ -469,7 +474,13 @@ void elaboraStringaComando(String comando) {
                            &g1[0], &g1[1], &g1[2], &g1[3], &g1[4], &g1[5], &g1[6],
                            &g2[0], &g2[1], &g2[2], &g2[3], &g2[4], &g2[5], &g2[6]);
 
-    if (argomenti >= 32) { 
+    if (argomenti < 32) {
+      // Comando arrivato incompleto (es. troncato dal MTU BLE): niente viene salvato,
+      // stampato qui per poterlo diagnosticare dal Serial Monitor.
+      Serial.printf("SAVE scartato: attesi 32 campi, ricevuti %d (lunghezza comando %d byte)\n", argomenti, comando.length());
+    }
+
+    if (argomenti >= 32) {
       oraStart = h1; minutoStart = m1; abilitaStart1 = (e1 == 1); 
       oraStart2 = h2; minutoStart2 = m2; abilitaStart2 = (e2 == 1);
       // Durate limitate a 0-1800 secondi, coerente con l'interfaccia web

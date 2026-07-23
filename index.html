@@ -427,6 +427,10 @@
     let txCharacteristic = null;
     let rxCharacteristic = null;
     let zonaManualeAttivaLocale = 0;
+    // true da quando l'utente tocca un campo di configurazione a quando preme "Salva":
+    // finché è true, gli aggiornamenti di stato periodici (ogni 2s) non toccano i campi,
+    // altrimenti sovrascriverebbero le modifiche non ancora salvate.
+    let formConfigModificato = false;
 
     const ACTION_BUTTON_IDS = ['btn-test', 'btn-reset-guard', 'btn-z1', 'btn-z2', 'btn-z3', 'btn-z4', 'btn-z5', 'btn-z6', 'btn-stop', 'btn-save'];
 
@@ -499,6 +503,16 @@
 
       document.querySelectorAll('#start1_attivo, #start2_attivo, #giorni-container input, #giorni2-container input').forEach(input => {
         input.addEventListener('change', aggiornaProssimoStart);
+      });
+
+      const marcaConfigModificato = () => { formConfigModificato = true; };
+      document.querySelectorAll(
+        '#ora, #min, #start1_attivo, #ora2, #min2, #start2_attivo, ' +
+        '#durate-container input, #durate2-container input, ' +
+        '#giorni-container input, #giorni2-container input'
+      ).forEach(input => {
+        input.addEventListener('input', marcaConfigModificato);
+        input.addEventListener('change', marcaConfigModificato);
       });
 
       aggiornaGiornoCorrente();
@@ -798,6 +812,7 @@
         btn.className = "btn-emerald py-2.5 px-6 inline-flex items-center gap-2";
         btn.innerHTML = "<i class='fa-solid fa-circle-check'></i> CONNESSO";
         impostaAbilitazioneComandi(true);
+        formConfigModificato = false;
         mostraToast("Connesso alla centralina", "success");
 
         setTimeout(async () => {
@@ -896,6 +911,7 @@
         const stringaComando = `SAVE:${ora1},${min1},${en1},${ora2},${min2},${en2},${durate1.join(',')},${durate2.join(',')},${g1.join(',')},${g2.join(',')}`;
 
         if (await inviaComandoBLE(stringaComando)) {
+          formConfigModificato = false;
           mostraToast("Configurazione salvata in EEPROM!", "success");
         } else {
           mostraToast("Errore: centralina non connessa", "error");
@@ -919,10 +935,7 @@
         aggiornaCurrentDayDisplay();
         aggiornaAvvisoBatteriaRTC(dati);
 
-        const qualcunoInFocus = document.activeElement &&
-                               (document.activeElement.tagName === 'INPUT' || document.activeElement.type === 'checkbox');
-
-        if (!qualcunoInFocus) {
+        if (!formConfigModificato) {
           document.getElementById('ora').value = dati.h;
           document.getElementById('min').value = dati.m;
           document.getElementById('start1_attivo').checked = (dati.en1 === 1);
