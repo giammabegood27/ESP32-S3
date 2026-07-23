@@ -101,6 +101,7 @@ NimBLECharacteristic* pTxCharacteristic = nullptr;
 volatile bool rxWritten = false;
 String rxValue = "";
 
+// Callback BLE: memorizza il comando ricevuto dal client per l'elaborazione nel loop principale.
 class RXCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
     (void)connInfo;
@@ -113,6 +114,7 @@ class RXCallbacks : public NimBLECharacteristicCallbacks {
 void startBLEAdvertising();
 void spegniZoneSeNonInCiclo();
 
+// Callback BLE: gestisce connessione/disconnessione del client, riavviando l'advertising alla disconnessione.
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
     (void)pServer;
@@ -130,6 +132,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
   }
 };
 
+// Avvia l'advertising BLE con il nome del dispositivo, rendendolo visibile ai client (es. app HMI).
 void startBLEAdvertising() {
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->setName("SIGNORETTI_Garden_esp");
@@ -197,12 +200,16 @@ int prossimaZonaDaAvviare = -1;
 // Usato per calcolare il progresso complessivo del ciclo (non solo della singola zona).
 unsigned long secondiAccumulatiCiclo = 0;
 
+// Spegne tutte le valvole, ma solo se non è in corso un ciclo automatico o di test
+// (evita di interrompere un'irrigazione già avviata, es. alla disconnessione BLE).
 void spegniZoneSeNonInCiclo() {
   if (!cicloAutomaticoAttivo && !inCicloTest) {
     for (int i = 0; i < numeroZone; i++) digitalWrite(pinZone[i], LOW);
   }
 }
 
+// Inizializzazione: seriale, RTC, pin delle zone, EEPROM (con caricamento impostazioni salvate)
+// e avvio del server BLE (servizio + caratteristiche RX/TX + advertising).
 void setup() {
   Serial.begin(9600);
   RTC.begin();
@@ -231,6 +238,9 @@ void setup() {
   startBLEAdvertising();
 }
 
+// Ciclo principale: controlla l'avvio automatico dei cicli programmati, avanza la sequenza
+// di irrigazione in corso, elabora eventuali comandi BLE ricevuti e invia periodicamente
+// (ogni 2s, o subito dopo un comando) lo stato aggiornato al client via BLE.
 void loop() {
   controlloAvvioAutomatico();
   gestisciAvanzamentoSequenza();
@@ -249,6 +259,10 @@ void loop() {
   delay(10);
 }
 
+// Verifica se è il momento di avviare uno dei due cicli automatici programmati (Start1/Start2),
+// confrontando ora/minuto correnti dell'RTC con quelli impostati e il giorno della settimana.
+// Il controllo giornoUltimoCiclo/startUltimoCiclo impedisce che lo stesso start riparta più
+// volte nello stesso giorno.
 void controlloAvvioAutomatico() {
   if (cicloAutomaticoAttivo || inCicloTest) return;
 
@@ -280,6 +294,8 @@ void controlloAvvioAutomatico() {
   }
 }
 
+// Avvia (apre la valvola della) prima zona con durata > 0 a partire dall'indice indicato.
+// Se nessuna zona successiva ha una durata valida, il ciclo corrente (automatico o test) termina.
 void iniziaProssimaZona(int daIndice) {
   zonaAttivaCorrente = -1;
   for (int i = daIndice; i < numeroZone; i++) {
@@ -300,6 +316,9 @@ void iniziaProssimaZona(int daIndice) {
   }
 }
 
+// Gestisce l'avanzamento tra le zone del ciclo attivo: rileva quando la zona corrente ha
+// esaurito la sua durata, la spegne, applica una pausa (STOP_TRA_ZONE_MS) e poi avvia la zona
+// successiva tramite iniziaProssimaZona().
 void gestisciAvanzamentoSequenza() {
   if (inStopTraZone) {
     if (millis() - timeInizioStopTraZone >= STOP_TRA_ZONE_MS) {
@@ -358,6 +377,9 @@ int tipoCicloCorrente() {
   return 0;
 }
 
+// Interpreta i comandi testuali ricevuti via BLE (STOP, TEST, MANUAL:<zona>, SAVE:<...>,
+// RESETGUARD, TIME:<ora,min,giorno>) e aggiorna di conseguenza stato e impostazioni,
+// notificando poi lo stato aggiornato al client.
 void elaboraStringaComando(String comando) {
   if (comando.length() == 0) return;
 
@@ -451,6 +473,8 @@ void elaboraStringaComando(String comando) {
   ultimoInvioStato = millis();
 }
 
+// Costruisce un JSON con lo stato corrente (orari/giorni/durate configurati, ora RTC, zona
+// attiva e progresso di zona/ciclo) e lo invia via notifica BLE al client (app HMI).
 void inviaStatoBLE() {
   RTCTime oraAttuale; RTC.getTime(oraAttuale);
   String rtcTime = String(oraAttuale.getHour()) + ":" + (oraAttuale.getMinutes() < 10 ? "0" : "") + String(oraAttuale.getMinutes());
@@ -495,6 +519,8 @@ void inviaStatoBLE() {
   }
 }
 
+// Carica le impostazioni salvate in EEPROM, solo se la firma letta corrisponde a FIRMA_EEPROM
+// (altrimenti la EEPROM è vuota/di un layout diverso e restano i valori di default).
 void caricaImpostazioniEEPROM() {
   uint16_t firmaLetta; EEPROM.get(ADDR_FIRMA, firmaLetta);
   if(firmaLetta == FIRMA_EEPROM) {
