@@ -268,6 +268,9 @@
           <p class="font-mono text-[11px] tracking-[0.15em] uppercase" style="color:var(--muted)">Orologio RTC</p>
           <p id="rtc-time" class="font-mono text-2xl font-semibold">--:--</p>
           <p id="current-day" class="font-mono text-[11px] uppercase tracking-[0.15em] mt-1" style="color:var(--muted)">--</p>
+          <p id="rtc-battery-warning" class="hidden font-mono text-[10px] uppercase tracking-[0.15em] mt-1 flex items-center justify-end gap-1" style="color:var(--danger)" title="Il DS3231 ha rilevato un'interruzione dell'alimentazione: risincronizza l'ora">
+            <i class="fa-solid fa-triangle-exclamation"></i> Batteria RTC scarica
+          </p>
         </div>
       </div>
 
@@ -648,6 +651,18 @@
     let statoCiclo = { tipo: 0, elapsedZona: 0, durZona: 0, elapsedCiclo: 0, totCiclo: 0, zona: 0, ricevutoAt: 0 };
     let _renderInterval = null;
     let popupHiddenByUser = false;
+    let rtcBatteriaOk = true;
+
+    function aggiornaAvvisoBatteriaRTC(dati) {
+      if (dati.bat === undefined) return;
+      const batteriaOk = parseInt(dati.bat, 10) === 1;
+      const warningEl = document.getElementById('rtc-battery-warning');
+      if (warningEl) warningEl.classList.toggle('hidden', batteriaOk);
+      if (!batteriaOk && rtcBatteriaOk) {
+        mostraToast("Batteria RTC scarica: l'ora potrebbe non essere affidabile, risincronizzala", "error");
+      }
+      rtcBatteriaOk = batteriaOk;
+    }
 
     function showIrrigazionePopup() {
       popupHiddenByUser = false;
@@ -902,6 +917,7 @@
       try {
         document.getElementById('rtc-time').innerText = dati.rtc || "--:--";
         aggiornaCurrentDayDisplay();
+        aggiornaAvvisoBatteriaRTC(dati);
 
         const qualcunoInFocus = document.activeElement &&
                                (document.activeElement.tagName === 'INPUT' || document.activeElement.type === 'checkbox');
