@@ -161,7 +161,7 @@ const int ADDR_DURATE_2 = 22;     // 12 byte (22-33): 6 zone x 2 byte - Start 2
 // Firma cambiata per forzare una riscrittura pulita: il layout EEPROM è cambiato.
 const uint16_t FIRMA_EEPROM = 0xABD3;
 
-const int pinZone[] = {2, 3, 4, 5, 6, 7};
+const int pinZone[] = {1, 2, 4, 5, 6, 7};
 const int numeroZone = 6;
 const int DURATA_ZONA_TEST = 10; // secondi fissi per zona in modalità test
 const unsigned long STOP_TRA_ZONE_MS = 3000; // pausa tra una zona e la successiva
