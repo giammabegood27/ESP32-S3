@@ -33,43 +33,104 @@ public:
   SaveLight saveLight;
 };
 
+const uint8_t DS3231_I2C_ADDR = 0x68;
+
 // Wrapper attorno al chip DS3231 (via uRTCLib) che espone la stessa interfaccia
 // (begin/getTime/setTime) già usata dal resto dello sketch, così la logica di
-// scheduling non deve conoscere i dettagli del chip.
+// scheduling non deve conoscere i dettagli del chip. Se il DS3231 non risponde
+// sul bus I2C (non collegato), passa automaticamente a un orologio software
+// tenuto in RAM via millis(), sincronizzato dall'ultimo comando TIME: ricevuto
+// dal telefono via BLE: funziona, ma perde l'ora ad ogni riavvio.
 class RTCClass {
 public:
   void begin() {
-    urtc.refresh();
-    // OSF (Oscillator Stop Flag): true se il DS3231 ha perso l'alimentazione
-    // (batteria scarica/assente o primo avvio mai sincronizzato).
-    batteriaScarica = urtc.lostPower();
+    Wire.beginTransmission(DS3231_I2C_ADDR);
+    hardwarePresente = (Wire.endTransmission() == 0);
+
+    if (hardwarePresente) {
+      urtc.refresh();
+      // OSF (Oscillator Stop Flag): true se il DS3231 ha perso l'alimentazione
+      // (batteria scarica/assente o primo avvio mai sincronizzato).
+      batteriaScarica = urtc.lostPower();
+    } else {
+      batteriaScarica = true;
+      lastMillis = millis();
+    }
   }
 
   void getTime(RTCTime &t) {
-    urtc.refresh();
-    t.dayOfMonth = urtc.day();
-    t.month = (Month)urtc.month();
-    t.year = 2000 + urtc.year();
-    t.hour = urtc.hour();
-    t.minute = urtc.minute();
-    t.second = urtc.second();
-    t.dayOfWeek = (DayOfWeek)urtc.dayOfWeek();
-    t.saveLight = SaveLight::SAVING_TIME_INACTIVE;
+    if (hardwarePresente) {
+      urtc.refresh();
+      t.dayOfMonth = urtc.day();
+      t.month = (Month)urtc.month();
+      t.year = 2000 + urtc.year();
+      t.hour = urtc.hour();
+      t.minute = urtc.minute();
+      t.second = urtc.second();
+      t.dayOfWeek = (DayOfWeek)urtc.dayOfWeek();
+      t.saveLight = SaveLight::SAVING_TIME_INACTIVE;
+    } else {
+      aggiornaOrologioSoftware();
+      t = currentTime;
+    }
   }
 
   void setTime(const RTCTime &t) {
-    urtc.set(t.second, t.minute, t.hour, (uint8_t)t.dayOfWeek, t.dayOfMonth, (uint8_t)t.month, (uint8_t)(t.year % 100));
-    // Una sincronizzazione manuale riuscita azzera il flag: da qui in poi
-    // segnaliamo solo un'eventuale NUOVA interruzione dell'alimentazione.
-    urtc.lostPowerClear();
-    batteriaScarica = false;
+    if (hardwarePresente) {
+      urtc.set(t.second, t.minute, t.hour, (uint8_t)t.dayOfWeek, t.dayOfMonth, (uint8_t)t.month, (uint8_t)(t.year % 100));
+      // Una sincronizzazione manuale riuscita azzera il flag: da qui in poi
+      // segnaliamo solo un'eventuale NUOVA interruzione dell'alimentazione.
+      urtc.lostPowerClear();
+      batteriaScarica = false;
+    } else {
+      currentTime = t;
+      lastMillis = millis();
+      // batteriaScarica resta true: senza DS3231 l'ora è comunque volatile
+      // e si perderà al prossimo riavvio/mancanza di corrente.
+    }
   }
 
   bool batteriaScaricaFlag() const { return batteriaScarica; }
 
 private:
-  uRTCLib urtc = uRTCLib(0x68);
+  uRTCLib urtc = uRTCLib(DS3231_I2C_ADDR);
+  bool hardwarePresente = false;
   bool batteriaScarica = false;
+
+  // --- Orologio software di riserva, usato solo se il DS3231 non è collegato ---
+  RTCTime currentTime;
+  unsigned long lastMillis = 0;
+
+  void aggiornaOrologioSoftware() {
+    unsigned long now = millis();
+    unsigned long deltaMs = now - lastMillis;
+    if (deltaMs < 1000) return;
+
+    unsigned long secondiDaAvanzare = deltaMs / 1000;
+    lastMillis += secondiDaAvanzare * 1000;
+
+    while (secondiDaAvanzare > 0) {
+      secondiDaAvanzare--;
+      avanzaUnSecondo(currentTime);
+    }
+  }
+
+  void avanzaUnSecondo(RTCTime &t) {
+    t.second += 1;
+    if (t.second >= 60) {
+      t.second = 0;
+      t.minute += 1;
+      if (t.minute >= 60) {
+        t.minute = 0;
+        t.hour += 1;
+        if (t.hour >= 24) {
+          t.hour = 0;
+          t.dayOfWeek = (DayOfWeek)(t.dayOfWeek == SATURDAY ? SUNDAY : (t.dayOfWeek + 1));
+          t.dayOfMonth = (t.dayOfMonth % 31) + 1;
+        }
+      }
+    }
+  }
 };
 
 RTCClass RTC;
